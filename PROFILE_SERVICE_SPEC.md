@@ -121,27 +121,28 @@
 ### Диаграмма компонентов (новый сервис в контексте)
 ```mermaid
 flowchart LR
-    subgraph Client
-      U[Пользователь]
-      A[Администратор]
-    end
+  subgraph Client
+    U["Пользователь"]
+    A["Администратор"]
+  end
 
-    U -->|JWT| GW[Gateway(Nginx)]
-    A -->|JWT| GW
+  U -->|JWT| GW["Gateway (Nginx)"]
+  A -->|JWT| GW
 
-    GW --> PS[Profile Service (FastAPI)]
-    GW --> CA[Content API]
-    GW --> AS[Auth Service]
-    A --> DJ[Admin Panel (Django)]
+  GW --> PROFILE["Profile Service (FastAPI)"]
+  GW --> CONTENT["Content API"]
+  GW --> AUTH["Auth Service"]
+  A  --> ADMIN["Admin Panel (Django)"]
 
-    PS -->|SQL| PG[(PostgreSQL: profiles_db)]
-    PS -->|cache| RD[(Redis)]
-    CA --> ES[(Elasticsearch)]
-    UGC[UGC Service] --> CH[(ClickHouse)]
+  PROFILE -->|SQL| PG[(PostgreSQL: profiles_db)]
+  PROFILE -->|cache| RD["Redis"]
+  CONTENT  --> ES["Elasticsearch"]
+  UGC["UGC Service"] --> CH["ClickHouse"]
 
-    CA <--> PS
-    DJ <--> PS
-    AS <--> PS
+  CONTENT <--> PROFILE
+  ADMIN   <--> PROFILE
+  AUTH    <--> PROFILE
+
 ```
 
 ---
@@ -261,42 +262,38 @@ sequenceDiagram
 ### Component Diagram — интеграция нового сервиса
 ```mermaid
 flowchart TB
-  subgraph Edge
-    GW[Gateway (Nginx)]
+  subgraph EdgeLayer
+    GATEWAY["Gateway (Nginx)"]
   end
 
   subgraph Services
-    AS[Auth Service (FastAPI)]
-    CA[Content API (FastAPI)]
-    PS[Profile Service (FastAPI)]
-    UGC[UGC Service (FastAPI)]
-    DJ[Admin Panel (Django)]
+    AUTH["Auth Service (FastAPI)"]
+    CONTENT["Content API (FastAPI)"]
+    PROFILE["Profile Service (FastAPI)"]
+    UGC["UGC Service (FastAPI)"]
+    ADMIN["Admin Panel (Django)"]
   end
 
   subgraph DataStores
-    PG[(PostgreSQL:\n auth_db, admin_db, profiles_db)]
-    RD[(Redis)]
-    ES[(Elasticsearch)]
-    CH[(ClickHouse)]
+    POSTGRES["PostgreSQL:<br/>auth_db, admin_db, profiles_db"]
+    REDIS["Redis"]
+    ELASTIC["Elasticsearch"]
+    CLICKHOUSE["ClickHouse"]
   end
 
-  GW <--> AS
-  GW <--> CA
-  GW <--> PS
-  GW <--> UGC
-  GW <--> DJ
+  GATEWAY <--> AUTH
+  GATEWAY <--> CONTENT
+  GATEWAY <--> PROFILE
+  GATEWAY <--> UGC
+  GATEWAY <--> ADMIN
 
-  AS --> PG
-  DJ --> PG
-  PS --> PG
-  CA --> ES
-  UGC --> CH
-  PS --> RD
+  AUTH --> POSTGRES
+  ADMIN --> POSTGRES
+  PROFILE --> POSTGRES
+  CONTENT --> ELASTIC
+  UGC --> CLICKHOUSE
+  PROFILE --> REDIS
 
-  CA <--> PS:::api
-  DJ <--> PS:::api
-
-  classDef api stroke-dasharray: 4 4
 ```
 
 ---

@@ -21,3 +21,5 @@ venv/
 
 # Logs
 *.log
+create_labels.py
+create_issues.py
