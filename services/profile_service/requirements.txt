@@ -1,0 +1,15 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.31
+asyncpg==0.29.0
+alembic==1.13.2
+pydantic==2.10.6
+pydantic-settings==2.8.1
+python-jose==3.3.0
+cryptography==43.0.1
+phonenumbers==8.13.45
+redis==5.0.8
+httpx==0.27.2
+pytest==8.3.2
+pytest-asyncio==0.23.8
+anyio==4.4.0

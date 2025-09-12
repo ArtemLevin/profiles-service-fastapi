@@ -155,5 +155,23 @@ services:
       - "8004"
     restart: unless-stopped
 
+  profile-service:
+    build:
+      context: ./services/profile_service
+    container_name: profile-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cinema:cinema@db:5432/profiles_db
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALG: ${JWT_ALG}
+      PROFILES_CRYPTO_KEY_BASE64: ${PROFILES_CRYPTO_KEY_BASE64}
+      PHONE_HASH_PEPPER: ${PHONE_HASH_PEPPER}
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 volumes:
   pg_data:
