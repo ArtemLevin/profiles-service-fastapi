@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator, ValidationError
 from typing import Optional
 
 class ProfileCreate(BaseModel):
@@ -18,3 +20,28 @@ class ProfileOut(BaseModel):
     phone: str
     marketing_opt_in: bool
     twofa_phone_verified: bool
+
+class RatingPut(BaseModel):
+    film_id: UUID
+    rating: float
+
+    @field_validator("rating")
+    @classmethod
+    def validate_rating(cls, v):
+        if not (0 <= v <= 10):
+            raise ValueError("Rating must be between 0 and 10")
+        if (v * 2) % 1 != 0:
+            raise ValueError("Rating must be in steps of 0.5")
+        return float(v)
+
+class RatingOut(BaseModel):
+    rating: float
+
+    @field_validator("rating")
+    @classmethod
+    def validate_rating(cls, v):
+        if not (0 <= v <= 10):
+            raise ValueError("Rating must be between 0 and 10")
+        if (v * 2) % 1 != 0:
+            raise ValueError("Rating must be in steps of 0.5")
+        return float(v)

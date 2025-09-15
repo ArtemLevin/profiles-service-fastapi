@@ -1,10 +1,12 @@
+from uuid import UUID
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from .db import Base, engine, get_session
-from .models import Profile
-from .schemas import ProfileCreate, ProfileUpdate, ProfileOut
+from .models import Profile, Rating
+from .schemas import ProfileCreate, ProfileUpdate, ProfileOut, RatingPut, RatingOut
 from .settings import settings
 from .security import decode_jwt
 from .crypto import CryptoBox, normalize_e164, phone_hash
@@ -123,3 +125,59 @@ async def delete_profile(user_id: int = Depends(current_user_id), session: Async
     await session.execute(delete(Profile).where(Profile.user_id == user_id))
     await session.commit()
     return
+
+@app.get("/api/profile/me/ratings", response_model=RatingOut, status_code=200)
+async def get_rating(film_id: UUID, user_id: int = Depends(current_user_id), session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    profile = res.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    res = await session.execute(
+        select(Rating).where(
+            Rating.profile_id == profile.id,
+            Rating.film_id == film_id
+        )
+    )
+
+    rating = res.scalar_one_or_none()
+
+    if rating:
+        return RatingOut(rating=rating.rating)
+    else:
+        raise HTTPException(status_code=404, detail="Rating not found")
+
+@app.put("/api/profile/me/ratings", response_model=RatingOut, status_code=200)
+async def put_rating(payload: RatingPut, user_id: int = Depends(current_user_id), session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    profile = res.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    res = await session.execute(
+        select(Rating).where(
+            Rating.profile_id == profile.id,
+            Rating.film_id == payload.film_id
+        )
+    )
+    rating = res.scalar_one_or_none()
+
+    if rating:
+        rating.rating = payload.rating
+        await session.commit()
+        await session.refresh(rating)
+        r = rating
+    else:
+        r = Rating(
+            profile_id=profile.id,
+            film_id=payload.film_id,
+            rating=payload.rating
+        )
+        session.add(r)
+        await session.commit()
+        await session.refresh(r)
+
+    return RatingOut(rating=r.rating)
+
+
+
