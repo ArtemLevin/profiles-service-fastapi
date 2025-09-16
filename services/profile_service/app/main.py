@@ -4,12 +4,16 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
+from redis.asyncio import Redis
+
 from .db import Base, engine, get_session
 from .models import Profile, Rating
-from .schemas import ProfileCreate, ProfileUpdate, ProfileOut, RatingPut, RatingOut
+from .schemas import ProfileCreate, ProfileUpdate, ProfileOut, RatingPut, RatingOut, \
+    RatingAggregate
 from .settings import settings
 from .security import decode_jwt
 from .crypto import CryptoBox, normalize_e164, phone_hash
+from .rating_cache import get_rating_aggregate as cached_rating_aggregate, invalidate_rating_aggregate_cache, get_redis
 
 app = FastAPI(title="Profile Service", docs_url="/api/profile/openapi", openapi_url="/api/profile/openapi.json")
 
@@ -162,22 +166,34 @@ async def put_rating(payload: RatingPut, user_id: int = Depends(current_user_id)
     )
     rating = res.scalar_one_or_none()
 
-    if rating:
-        rating.rating = payload.rating
-        await session.commit()
-        await session.refresh(rating)
-        r = rating
-    else:
-        r = Rating(
-            profile_id=profile.id,
-            film_id=payload.film_id,
-            rating=payload.rating
-        )
-        session.add(r)
-        await session.commit()
-        await session.refresh(r)
-
+    redis = await Redis.from_url("redis://localhost:6379/0", encoding="utf-8", decode_responses=True)
+    try:
+        if rating:
+            rating.rating = payload.rating
+            await session.commit()
+            await session.refresh(rating)
+            r = rating
+        else:
+            r = Rating(
+                profile_id=profile.id,
+                film_id=payload.film_id,
+                rating=payload.rating
+            )
+            session.add(r)
+            await session.commit()
+            await session.refresh(r)
+        await invalidate_rating_aggregate_cache(payload.film_id, redis)
+    finally:
+        await redis.close()
     return RatingOut(rating=r.rating)
 
+
+@app.get("/api/profile/public/films/{film_id}/rating-agg", response_model=RatingAggregate, status_code=200)
+async def get_rating_aggregate(film_id: UUID, session: AsyncSession = Depends(get_session)):
+    redis = await Redis.from_url("redis://localhost:6379/0", encoding="utf-8", decode_responses=True)
+    try:
+        return await cached_rating_aggregate(film_id, session, redis)
+    finally:
+        await redis.close()
 
 
