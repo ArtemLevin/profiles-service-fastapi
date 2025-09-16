@@ -45,3 +45,10 @@ class RatingOut(BaseModel):
         if (v * 2) % 1 != 0:
             raise ValueError("Rating must be in steps of 0.5")
         return float(v)
+
+class RatingAggregate(BaseModel):
+    avg_rating: float
+    ratings_count: int
+
+    def model_post_init(self, __context: any) -> None:
+        self.avg_rating = round(self.avg_rating, 1)
