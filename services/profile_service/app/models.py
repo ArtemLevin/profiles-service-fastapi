@@ -38,3 +38,15 @@ class Rating(Base):
     __table_args__ = (
         UniqueConstraint("profile_id", "film_id", name="uix_profile_film"),
     )
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+
+    profile_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("profiles.id"), primary_key=True)
+    film_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    created_at: Mapped["DateTime"] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "film_id", name="uix_favorite_profile_film"),
+    )

@@ -52,3 +52,14 @@ class RatingAggregate(BaseModel):
 
     def model_post_init(self, __context: any) -> None:
         self.avg_rating = round(self.avg_rating, 1)
+
+class FavoriteIn(BaseModel):
+    film_id: UUID
+
+class FavoriteOut(BaseModel):
+    film_id: UUID
+    created_at: str
+
+class FavoritesListOut(BaseModel):
+    items: list[FavoriteOut]
+    total: int

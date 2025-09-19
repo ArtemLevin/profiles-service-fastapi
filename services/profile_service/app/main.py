@@ -3,13 +3,14 @@ from uuid import UUID
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, desc, func
 from redis.asyncio import Redis
 
+
 from .db import Base, engine, get_session
-from .models import Profile, Rating
+from .models import Profile, Rating, Favorite
 from .schemas import ProfileCreate, ProfileUpdate, ProfileOut, RatingPut, RatingOut, \
-    RatingAggregate
+    RatingAggregate, FavoriteIn, FavoriteOut, FavoritesListOut
 from .settings import settings
 from .security import decode_jwt
 from .crypto import CryptoBox, normalize_e164, phone_hash
@@ -195,5 +196,49 @@ async def get_rating_aggregate(film_id: UUID, session: AsyncSession = Depends(ge
         return await cached_rating_aggregate(film_id, session, redis)
     finally:
         await redis.close()
+
+@app.post("/api/profile/me/favorites", response_model=FavoriteOut, status_code=201)
+async def add_favorite(payload: FavoriteIn, user_id: int = Depends(current_user_id), session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    profile = res.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    fav = await session.get(Favorite, {"profile_id": profile.id, "film_id": payload.film_id})
+    if fav:
+        return FavoriteOut(film_id=fav.film_id, created_at=str(fav.created_at))
+    fav = Favorite(profile_id=profile.id, film_id=payload.film_id)
+    session.add(fav)
+    await session.commit()
+    await session.refresh(fav)
+    return FavoriteOut(film_id=fav.film_id, created_at=str(fav.created_at))
+
+@app.delete("/api/profile/me/favorites", status_code=204)
+async def delete_favorite(payload: FavoriteIn, user_id: int = Depends(current_user_id), session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    profile = res.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    fav = await session.get(Favorite, {"profile_id": profile.id, "film_id": payload.film_id})
+    if fav:
+        await session.delete(fav)
+        await session.commit()
+    return
+
+@app.get("/api/profile/me/favorites", response_model=FavoritesListOut)
+async def list_favorites(limit: int = 20, offset: int = 0, user_id: int = Depends(current_user_id), session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Profile).where(Profile.user_id == user_id))
+    profile = res.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    total = await session.scalar(select(func.count()).where(Favorite.profile_id == profile.id))
+    res = await session.execute(
+        select(Favorite)
+        .where(Favorite.profile_id == profile.id)
+        .order_by(desc(Favorite.created_at))
+        .offset(offset)
+        .limit(limit)
+    )
+    items = [FavoriteOut(film_id=f.film_id, created_at=str(f.created_at)) for f in res.scalars().all()]
+    return FavoritesListOut(items=items, total=total)
 
 

@@ -60,3 +60,8 @@ def bearer_token():
 async def client(session_override):
     async with AsyncClient(app=app, base_url="http://testserver") as ac:
         yield ac
+
+@pytest.fixture
+async def async_client(session_override):
+    async with AsyncClient(app=app, base_url="http://testserver") as ac:
+        yield ac
