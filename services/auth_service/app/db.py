@@ -14,9 +14,9 @@ settings = get_settings()
 ensure_aiosqlite()
 
 engine = create_async_engine(
-    settings.database_url,
+    settings.database.url,
     future=True,
-    echo=False,
+    echo=settings.database.echo,
     pool_pre_ping=True,
 )
 
@@ -25,7 +25,6 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
-
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

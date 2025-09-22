@@ -22,11 +22,12 @@ async def get_auth_service(
         user_repository=UserRepository(session),
         password_hasher=PasswordHasher(),
         token_service=TokenService(
-            secret=settings.jwt_secret.get_secret_value(),
-            algorithm=settings.jwt_alg,
+            secret=settings.security.jwt_secret.get_secret_value(),
+            algorithm=settings.security.jwt_alg,
         ),
-        access_ttl_minutes=settings.access_token_expires_min,
-        refresh_ttl_minutes=settings.refresh_token_expires_min,
+        access_ttl_minutes=settings.tokens.access_token_expires_min,
+        refresh_ttl_minutes=settings.tokens.refresh_token_expires_min,
+
         logger=logger,
     )
     return service

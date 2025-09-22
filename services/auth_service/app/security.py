@@ -17,7 +17,6 @@ class PasswordHasher:
     def hash(self, password: str) -> str:
         return bcrypt.hash(password)
 
-
     def verify(self, password: str, password_hash: str) -> bool:
         return bcrypt.verify(password, password_hash)
 
