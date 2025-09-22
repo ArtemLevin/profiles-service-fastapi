@@ -4,3 +4,10 @@ elasticsearch[async]==8.13.2
 redis==5.0.8
 orjson==3.10.7
 pydantic==2.10.6
+pydantic-settings==2.6.1
+prometheus-fastapi-instrumentator==7.0.0
+opentelemetry-sdk==1.26.0
+opentelemetry-exporter-otlp==1.26.0
+opentelemetry-instrumentation-fastapi==0.47b0
+opentelemetry-instrumentation-logging==0.47b0
+sentry-sdk==2.18.0
