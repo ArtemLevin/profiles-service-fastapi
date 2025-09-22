@@ -76,8 +76,8 @@ async def redis() -> AsyncIterator[InMemoryRedis]:
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
     engine = create_async_engine(
-        settings.database_url,
-        echo=False,
+        settings.database.url,
+        echo=settings.database.echo,
         poolclass=StaticPool,
         connect_args={"check_same_thread": False},
     )

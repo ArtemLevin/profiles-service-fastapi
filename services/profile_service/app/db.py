@@ -17,7 +17,12 @@ class Base(DeclarativeBase):
 
 ensure_aiosqlite()
 
-engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True, future=True)
+engine = create_async_engine(
+    settings.database.url,
+    echo=settings.database.echo,
+    pool_pre_ping=True,
+    future=True,
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

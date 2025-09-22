@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -28,29 +27,24 @@ class Profile(Base):
     __tablename__ = "profiles"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True, nullable=False)
-    full_name: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    full_name: Mapped[str] = mapped_column(Text)
 
-    phone_e164_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    phone_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True, index=True)
+    phone_e164_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    phone_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True, index=True)
 
-    marketing_opt_in: Mapped[bool] = mapped_column(
-        Boolean, server_default=text("false"), nullable=False
-    )
-    twofa_phone_verified: Mapped[bool] = mapped_column(
-        Boolean, server_default=text("false"), nullable=False
-    )
+    marketing_opt_in: Mapped[bool] = mapped_column(server_default=text("false"))
+    twofa_phone_verified: Mapped[bool] = mapped_column(server_default=text("false"))
+
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
-        nullable=False,
     )
 
 
@@ -59,17 +53,17 @@ class Rating(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     profile_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("profiles.id"), nullable=False, index=True
+        Uuid(as_uuid=True), ForeignKey("profiles.id"), index=True
     )
-    film_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    film_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), index=True)
 
-    rating: Mapped[float] = mapped_column(Float, nullable=False)
+
+    rating: Mapped[float] = mapped_column(Float)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
-        nullable=False,
     )
 
     profile = relationship("Profile")
@@ -87,7 +81,6 @@ class Favorite(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False,
     )
 
     __table_args__ = (UniqueConstraint("profile_id", "film_id", name="uix_favorite_profile_film"),)
@@ -97,14 +90,11 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    profile_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("profiles.id"), nullable=False
-    )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    action: Mapped[str] = mapped_column(Text, nullable=False)
+    profile_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("profiles.id"))
+    user_id: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(Text)
     ts: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False,
     )
     details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

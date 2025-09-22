@@ -33,12 +33,17 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for tests
 
 
 security = HTTPBearer()
-limiter = Limiter(key_func=get_remote_address, storage_uri=settings.limiter_storage_uri)
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=settings.rate_limit.storage_uri or settings.redis.dsn,
+)
+
 
 
 @lru_cache(maxsize=1)
 def get_crypto_box() -> CryptoBox:
-    return CryptoBox(settings.profiles_crypto_key_base64)
+    return CryptoBox(settings.security.profiles_crypto_key_base64)
+
 
 
 async def get_redis(request: Request) -> Redis:
@@ -56,14 +61,20 @@ async def get_profile_service(
         session=session,
         redis=redis,
         crypto_box=get_crypto_box(),
-        phone_pepper=settings.phone_hash_pepper,
-        rating_cache_ttl=settings.rating_cache_ttl_seconds,
+        phone_pepper=settings.security.phone_hash_pepper,
+        rating_cache_ttl=settings.cache.rating_ttl_seconds,
+
     )
 
 
 def _decode_credentials(token: HTTPAuthorizationCredentials) -> dict[str, Any]:
     try:
-        return decode_jwt(token.credentials, secret=settings.jwt_secret, alg=settings.jwt_alg)
+        return decode_jwt(
+            token.credentials,
+            secret=settings.security.jwt_secret.get_secret_value(),
+            alg=settings.security.jwt_alg,
+        )
+
     except JWTError as exc:  # pragma: no cover - JWT library failure
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"

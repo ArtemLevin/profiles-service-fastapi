@@ -6,7 +6,6 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -31,23 +30,23 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    configure_logging(settings.log_level)
-    if settings.tracing_enabled:
+    configure_logging(settings.app.log_level)
+    if settings.app.tracing_enabled:
         configure_tracing(
             service_name="profile_service",
-            exporter_endpoint=settings.otlp_endpoint,
-            insecure=settings.otlp_insecure,
-            sample_ratio=settings.traces_sample_ratio,
+            exporter_endpoint=settings.app.otlp_endpoint,
+            insecure=settings.app.otlp_insecure,
+            sample_ratio=settings.app.traces_sample_ratio,
         )
-    if settings.sentry_dsn:
+    if settings.app.sentry_dsn:
         init_sentry(
-            settings.sentry_dsn,
-            environment=settings.sentry_environment,
-            traces_sample_rate=settings.sentry_traces_sample_rate,
+            settings.app.sentry_dsn,
+            environment=settings.app.sentry_environment,
+            traces_sample_rate=settings.app.sentry_traces_sample_rate,
         )
-    if settings.tracing_enabled:
+    if settings.app.tracing_enabled:
         instrument_app(app)
-    redis = Redis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
+    redis = Redis.from_url(settings.redis.dsn, encoding="utf-8", decode_responses=True)
     app.state.redis = redis
     app.state.limiter = limiter
     logger.info("Profile service startup complete")
@@ -68,23 +67,23 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app, logger)
 
-    request_headers = parse_csv(settings.request_log_headers)
+    request_headers = parse_csv(settings.app.request_log_headers)
     app.add_middleware(
         RequestContextMiddleware,
         logger=logger,
-        request_id_header=settings.request_id_header.lower(),
-        trust_request_id_header=settings.trust_request_id_header,
+        request_id_header=settings.app.request_id_header.lower(),
+        trust_request_id_header=settings.app.trust_request_id_header,
         log_headers=request_headers,
     )
 
-    allowed_hosts = parse_csv(settings.allowed_hosts)
+    allowed_hosts = parse_csv(settings.app.allowed_hosts)
     if allowed_hosts and allowed_hosts != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
-    cors_origins = parse_csv(settings.cors_allow_origins) or ["*"]
-    cors_methods = parse_csv(settings.cors_allow_methods) or ["*"]
-    cors_headers = parse_csv(settings.cors_allow_headers) or ["*"]
-    allow_credentials = settings.cors_allow_credentials
+    cors_origins = parse_csv(settings.app.cors_allow_origins) or ["*"]
+    cors_methods = parse_csv(settings.app.cors_allow_methods) or ["*"]
+    cors_headers = parse_csv(settings.app.cors_allow_headers) or ["*"]
+    allow_credentials = settings.app.cors_allow_credentials
     if cors_origins == ["*"] and allow_credentials:
         allow_credentials = False
     app.add_middleware(
@@ -95,16 +94,17 @@ def create_app() -> FastAPI:
         allow_headers=cors_headers,
     )
 
-    if settings.rate_limit_enabled:
-        exempt_paths = parse_csv(settings.rate_limit_exempt_paths)
+    if settings.rate_limit.enabled:
+        exempt_paths = parse_csv(settings.rate_limit.exempt_paths)
         limiter_middleware = SlidingWindowRateLimiter(
-            limit=settings.rate_limit_requests,
-            interval_seconds=settings.rate_limit_window_seconds,
+            limit=settings.rate_limit.requests,
+            interval_seconds=settings.rate_limit.window_seconds,
         )
         app.add_middleware(
             RateLimitMiddleware,
             limiter=limiter_middleware,
-            exempt_paths=(*exempt_paths, settings.metrics_endpoint),
+            exempt_paths=(*exempt_paths, settings.app.metrics_endpoint),
+
         )
 
     app.add_middleware(SlowAPIMiddleware)
@@ -128,9 +128,9 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         return {"status": "OK"}
 
-    if settings.metrics_enabled:
-        setup_metrics(app, endpoint=settings.metrics_endpoint)
 
+    if settings.app.metrics_enabled:
+        setup_metrics(app, endpoint=settings.app.metrics_endpoint)
     return app
 
 
