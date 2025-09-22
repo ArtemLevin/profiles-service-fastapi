@@ -1,6 +1,6 @@
 https://github.com/ArtemLevin/graduate_work/tree/develop
 
-# Online Cinema
+Online Cinema
 
 ## Содержание
 - [Архитектура и сервисы](#архитектура-и-сервисы)
@@ -18,6 +18,7 @@ https://github.com/ArtemLevin/graduate_work/tree/develop
 - [Миграции и данные](#миграции-и-данные)
 - [Типичные проблемы](#типичные-проблемы)
 - [Дополнительные материалы](#дополнительные-материалы)
+
 
 ---
 
@@ -100,7 +101,9 @@ https://github.com/ArtemLevin/graduate_work/tree/develop
 **Admin panel**
 - `DJANGO_SECRET_KEY`, `DJANGO_SUPERUSER_*` — секрет Django и учётные данные суперпользователя.
 
+
 ### Генерация секретов профиля
+
 
 Профильный сервис не стартует с заглушечным ключом — создайте новый:
 ```bash
@@ -164,6 +167,7 @@ curl http://localhost/api/profile/health
 
 ## Локальная разработка и качество
 
+
 Установите инструменты качества:
 ```bash
 make install-dev
@@ -175,6 +179,34 @@ make lint          # ruff
 make typecheck     # mypy
 make check         # формат + линтеры + типы
 ```
+
+Тесты запускаются отдельно для каждого сервиса:
+```bash
+pytest services/auth_service/tests
+pytest services/content_api/tests
+pytest services/profile_service/tests
+pytest services/ugc_service/tests
+```
+
+### Частный запуск сервисов
+
+Каждый сервис можно стартовать вне Docker, указав нужные переменные окружения:
+```bash
+# Auth service c SQLite (по умолчанию)
+uvicorn services.auth_service.app.main:app --port 8001
+
+# Profile service с локальной SQLite
+DATABASE_URL=sqlite+aiosqlite:////tmp/profiles.db \
+PROFILES_CRYPTO_KEY_BASE64=<ключ> \
+PHONE_HASH_PEPPER=<pepper> \
+uvicorn services.profile_service.app.main:app --port 8000
+
+# Content API
+ELASTIC_HOST=localhost REDIS_HOST=localhost \
+uvicorn services.content_api.src.main:app --port 8002
+
+```
+`prometheus_fastapi_instrumentator.py` в корне обеспечивает доступность `/metrics`, даже если пакет отсутствует в окружении.
 
 Тесты запускаются отдельно для каждого сервиса:
 ```bash
@@ -219,16 +251,11 @@ uvicorn services.content_api.src.main:app --port 8002
 
 Gateway можно настроить на уровне Nginx (gzip, `proxy_next_upstream`, лимиты тела запроса) — смотрите `gateway/nginx.conf`.
 
-### Наблюдаемость и безопасность
 
-- Все FastAPI-сервисы поднимают `/metrics` (Prometheus) и автоматически логируют запросы в JSON-формате с `request_id` и `trace_id`.
-- Трассировка настраивается через переменные окружения `*_TRACING_ENABLED`, `*_OTLP_ENDPOINT`, `*_TRACES_SAMPLE_RATIO`; при наличии `*_SENTRY_DSN` активируется отправка ошибок в Sentry.
-- CORS, TrustedHost и rate limiting управляются параметрами конфигурации (`*_CORS_*`, `*_ALLOWED_HOSTS`, `*_RATE_LIMIT_*`). По умолчанию служебные эндпоинты (`/health`, `/metrics`) исключены из ограничения.
-- Для включения пер-сервисного rate limiting без Redis установите `*_RATE_LIMIT_ENABLED=true`; для продакшна рекомендуются backend-решения (SlowAPI/Redis, API Gateway).
-
----
+Gateway можно настроить на уровне Nginx (gzip, `proxy_next_upstream`, лимиты тела запроса) — смотрите `gateway/nginx.conf`.
 
 ## API и документация
+
 
 Swagger/OpenAPI доступен для каждого сервиса:
 - Auth: `http://localhost/api/auth/openapi`
@@ -236,17 +263,22 @@ Swagger/OpenAPI доступен для каждого сервиса:
 - Profile: `http://localhost/api/profile/openapi`
 - UGC: `http://localhost/api/ugc/openapi`
 
+
 Ключевые маршруты:
+
+=======
 
 **Auth**
 - `POST /api/auth/register` — регистрация пользователя.
 - `POST /api/auth/login` — выдача access/refresh токенов.
 - `GET /api/auth/me` — данные текущего пользователя (Bearer JWT).
 
+
 **Content**
 - `GET /api/content/films` — список фильмов с пагинацией.
 - `GET /api/content/films/{uuid}` — карточка фильма.
 - Аналогичные маршруты для жанров и персон.
+
 
 **Profile**
 - `GET/POST/PUT/DELETE /api/profile` — CRUD профиля текущего пользователя.
@@ -258,7 +290,6 @@ Swagger/OpenAPI доступен для каждого сервиса:
 - `POST /api/ugc/event` — запись пользовательского события.
 - `GET /api/ugc/events?limit=10` — чтение последних событий.
 
-
 **Admin panel**
 - Django admin с моделями фильмов/жанров/персон (схема `content`).
 
@@ -266,11 +297,11 @@ Swagger/OpenAPI доступен для каждого сервиса:
 
 ## Миграции и данные
 
-
 - **Auth service** — при старте вызывает `Base.metadata.create_all`, поэтому схема создаётся автоматически; Alembic не используется.
 - **Profile service** — миграции управляются Alembic (`services/profile_service/alembic.ini`). Создавайте новые файлы через `alembic revision --autogenerate -m "..."` и применяйте `alembic upgrade head`.
 - **Admin panel** — миграции Django выполняются в `entrypoint.sh`, суперпользователь создаётся автоматически при наличии переменных окружения.
 - **UGC** — при подключении к ClickHouse автоматически создаёт таблицу `events`. В деградированном режиме использует in-memory-хранилище.
+
 
 ---
 
@@ -290,6 +321,4 @@ Swagger/OpenAPI доступен для каждого сервиса:
 
 - [Спецификация профильного сервиса](PROFILE_SERVICE_SPEC.md)
 - [Изменения по профилям](CHANGELOG.md)
-
-Эти документы фиксируют принятые решения и дорожную карту дальнейшего развития.
 
