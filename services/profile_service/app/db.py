@@ -1,13 +1,26 @@
+"""Database setup for the profile service."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
+from services.common.db import ensure_aiosqlite
+
 from .settings import settings
+
 
 class Base(DeclarativeBase):
     pass
 
-engine = create_async_engine(settings.database_url_profiles, echo=False, pool_pre_ping=True, future=True)
+
+ensure_aiosqlite()
+
+engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True, future=True)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
-async def get_session() -> AsyncSession:
+
+async def get_session() -> AsyncIterator[AsyncSession]:
     async with AsyncSessionLocal() as session:
         yield session
