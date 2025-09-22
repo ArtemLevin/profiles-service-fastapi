@@ -1,6 +1,6 @@
 [project]
-name = "hermes"
-description = "Backend services and infrastructure for the Hermes streaming platform"
+name = "Online Cinema"
+description = "Backend services and infrastructure for the Online Cinema streaming platform"
 requires-python = ">=3.11"
 dynamic = ["version"]
 readme = "README.md"
