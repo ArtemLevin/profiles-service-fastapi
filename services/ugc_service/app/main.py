@@ -18,7 +18,6 @@ from .core.settings import Settings, get_settings
 from .db.clickhouse import close_clickhouse_client, create_clickhouse_client, ping_clickhouse
 from .repositories import EventRepository, InMemoryEventRepository
 from .services import EventRepositoryProtocol, EventService, EventServiceProtocol
-
 from services.common.observability.middleware import (
     RequestContextMiddleware,
     register_exception_handlers,
@@ -58,7 +57,6 @@ def create_app(
             )
         app.state.settings = settings
         app.state.event_backend = "unknown"
-
         if settings.tracing_enabled:
             instrument_app(app)
 
@@ -107,14 +105,12 @@ def create_app(
             if settings.ensure_schema:
                 await service.ensure_schema()
 
-
         try:
             yield
         finally:
             stored_client = getattr(app.state, "clickhouse_client", None)
             if isinstance(stored_client, httpx.AsyncClient):
                 await close_clickhouse_client(stored_client)
-
 
     app = FastAPI(
         title=settings.service_name,
@@ -188,7 +184,6 @@ def create_app(
                     LOGGER.warning("ClickHouse health probe failed", exc_info=True)
                     status_text = "DEGRADED"
         return {"status": status_text, "backend": backend}
-
 
     return app
 

@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-
 from services.ugc_service.app.main import create_app
 from services.ugc_service.app.schemas import UserEventCreate, UserEventRead
 from services.ugc_service.app.core.settings import Settings
@@ -63,7 +62,6 @@ async def test_create_event_endpoint_records_event() -> None:
     app = create_app(settings=settings, event_service=service)
 
     async with lifespan_client(app) as client:
-
         response = await client.post(
             "/api/ugc/events",
             json={"user_id": "1", "movie_id": "2", "event_type": "view"},
@@ -78,9 +76,7 @@ async def test_legacy_event_endpoint_still_supported() -> None:
     settings = Settings(default_list_limit=5, max_list_limit=50, ensure_schema=False)
     app = create_app(settings=settings, event_service=service)
 
-
     async with lifespan_client(app) as client:
-
         response = await client.post(
             "/api/ugc/event",
             json={"user_id": "1", "movie_id": "2", "event_type": "view"},
@@ -96,7 +92,6 @@ async def test_list_events_enforces_limit_and_returns_payload() -> None:
     app = create_app(settings=settings, event_service=service)
 
     async with lifespan_client(app) as client:
-
         response = await client.get("/api/ugc/events", params={"limit": 20})
 
     assert response.status_code == 200
@@ -112,7 +107,6 @@ async def test_list_events_uses_default_limit() -> None:
     app = create_app(settings=settings, event_service=service)
 
     async with lifespan_client(app) as client:
-
         response = await client.get("/api/ugc/events")
 
     assert response.status_code == 200
