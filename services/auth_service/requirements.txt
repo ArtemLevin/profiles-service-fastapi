@@ -8,3 +8,9 @@ pydantic-settings==2.8.1
 python-jose==3.3.0
 passlib[bcrypt]==1.7.4
 alembic==1.13.2
+prometheus-fastapi-instrumentator==7.0.0
+opentelemetry-sdk==1.26.0
+opentelemetry-exporter-otlp==1.26.0
+opentelemetry-instrumentation-fastapi==0.47b0
+opentelemetry-instrumentation-logging==0.47b0
+sentry-sdk==2.18.0
