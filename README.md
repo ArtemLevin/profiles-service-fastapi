@@ -76,29 +76,18 @@ flowchart LR
     A[Administrator]
   end
 
-  GW[Gateway (Nginx)]
-  PS[Profile Service (FastAPI)]
-  CA[Content API]
-  AS[Auth Service]
-  DJ[Admin Panel (Django)]
-  PG[(PostgreSQL: profiles_db)]
-  RD[(Redis)]
-  ES[(Elasticsearch)]
-  UGC[UGC Service]
-  CH[(ClickHouse)]
-
-  U -->|JWT| GW
+  U -->|JWT| GW[Gateway (Nginx)]
   A -->|JWT| GW
 
-  GW --> PS
-  GW --> CA
-  GW --> AS
-  A --> DJ
+  GW --> PS[Profile Service (FastAPI)]
+  GW --> CA[Content API]
+  GW --> AS[Auth Service]
+  A --> DJ[Admin Panel (Django)]
 
-  PS -->|SQL| PG
-  PS -->|cache| RD
-  CA --> ES
-  UGC --> CH
+  PS -->|SQL| PG[(PostgreSQL: profiles_db)]
+  PS -->|cache| RD[(Redis)]
+  CA --> ES[(Elasticsearch)]
+  UGC[UGC Service] --> CH[(ClickHouse)]
 
   CA --> PS
   PS --> CA
@@ -106,8 +95,6 @@ flowchart LR
   PS --> DJ
   AS --> PS
   PS --> AS
-
-
 
 ```
 
