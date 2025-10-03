@@ -1,324 +1,438 @@
-https://github.com/ArtemLevin/graduate_work/tree/develop
+# Profile Service — Online Cinema
 
-Online Cinema
+![Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.x-009688?logo=fastapi)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql)
+![Redis](https://img.shields.io/badge/Redis-7%2B-DC382D?logo=redis)
+![OpenAPI 3](https://img.shields.io/badge/OpenAPI-3.0-6BA539?logo=openapiinitiative)
+![Status](https://img.shields.io/badge/status-WIP-orange)
+![License](https://img.shields.io/badge/License-TBD-lightgrey)
 
-## Содержание
-- [Архитектура и сервисы](#архитектура-и-сервисы)
-  - [Инфраструктурные зависимости](#инфраструктурные-зависимости)
-- [Требования](#требования)
-- [Подготовка окружения](#подготовка-окружения)
-  - [Ключевые переменные окружения](#ключевые-переменные-окружения)
-  - [Генерация секретов профиля](#генерация-секретов-профиля)
-- [Первый запуск](#первый-запуск)
-  - [Проверка готовности](#проверка-готовности)
-- [Локальная разработка и качество](#локальная-разработка-и-качество)
-  - [Частный запуск сервисов](#частный-запуск-сервисов)
-- [Наблюдаемость и эксплуатация](#наблюдаемость-и-эксплуатация)
-- [API и документация](#api-и-документация)
-- [Миграции и данные](#миграции-и-данные)
-- [Типичные проблемы](#типичные-проблемы)
-- [Дополнительные материалы](#дополнительные-материалы)
+> A FastAPI microservice for managing user **profiles**, **favorites**, **ratings**, and **reviews** for an Online Cinema platform — with strong guarantees for PII security, auditability, and performance.
 
+**Repository (develop branch):** https://github.com/ArtemLevin/graduate_work/tree/develop
 
 ---
 
-## Архитектура и сервисы
+## Table of Contents
 
-| Сервис | Стек | Основные зависимости | Базовые эндпоинты через gateway |
-| ------ | ---- | -------------------- | ------------------------------- |
-| `gateway` | Nginx 1.25 | обратное проксирование на сервисы | `/health`, `/api/<svc>/…` |
-| `auth_service` | FastAPI, SQLAlchemy, JWT | PostgreSQL/SQLite, asyncpg/aiosqlite | `/api/auth/register`, `/api/auth/login`, `/api/auth/me` |
-| `content_api` | FastAPI | Elasticsearch 8, Redis 7 | `/api/content/films`, `/api/content/genres`, `/api/content/persons` |
-| `profile_service` | FastAPI, Alembic, SlowAPI | PostgreSQL, Redis, AES-GCM шифрование PII | `/api/profile/me`, `/api/profile/me/favorites`, `/api/profile/public/films/{id}/rating-agg` |
-| `ugc_service` | FastAPI | ClickHouse HTTP API (fallback in-memory storage) | `/api/ugc/events`, `/api/ugc/event`, `/health` |
-| `admin_panel` | Django 4 | PostgreSQL | `/admin/` |
-
-### Инфраструктурные зависимости
-
-* **PostgreSQL 15** — базы `auth_db`, `admin_db`, `profiles_db`.
-* **Redis 7** — кэш контента и профилей, rate limiting.
-* **Elasticsearch 8** — индексы фильмов, жанров, персон.
-* **ClickHouse 23.3** — события UGC (просмотры, рейтинги и т.д.).
-* **Docker Compose** соединяет сервисы и gateway; Makefile предоставляет короткие команды.
-
-Все FastAPI-приложения используют общий пакет `services/common` для логирования, метрик, трассировки и rate limiting, а `prometheus_fastapi_instrumentator.py` в корне репозитория предоставляет совместимую заглушку для экспорта метрик без отдельной установки пакета.
-
----
-
-## Требования
-
-- Docker 24+ и Docker Compose v2 (`docker compose`).
-- Для Windows — запуск через WSL2.
-- Не менее 4 ГБ RAM для контейнеров (Elasticsearch и ClickHouse требуют память).
-- Для локальной разработки без Docker: Python 3.11+, Poetry/pip для установки зависимостей, Redis/PostgreSQL/Elasticsearch/ClickHouse при необходимости.
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [API (Draft)](#api-draft)
+- [Data Model (Sketch)](#data-model-sketch)
+- [Security & Compliance](#security--compliance)
+- [Performance & Reliability](#performance--reliability)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Configuration](#configuration)
+  - [Run Locally](#run-locally)
+  - [Example with Docker Compose](#example-with-docker-compose)
+- [Observability](#observability)
+- [Admin Access](#admin-access)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
 ---
 
-## Подготовка окружения
+## Overview
 
-1. Клонируйте репозиторий и перейдите в корень.
-2. Скопируйте пример файла окружения:
-   ```bash
-   cp .env.example .env
-   ```
-3. Обновите значения `.env` под свою среду (см. секцию ниже). Особое внимание — секретам и ключам профиля.
-4. Убедитесь, что в `gateway/nginx.conf` у `proxy_pass` для `/api/auth/`, `/api/content/`, `/api/ugc/`, `/api/profile/` **нет завершающего слеша**.
+**Profile Service** is a standalone service within the *Online Cinema* monorepo that owns:
 
-### Ключевые переменные окружения
+- User **profiles** (PII)
+- **Favorites**: add/remove movies to a personal list
+- **Ratings**: 1..10 (0.5 steps), with public aggregates (avg/count)
+- **Reviews**: CRUD for personal reviews with moderation
+- Public **aggregates** and listings exposed to other services
 
-**Общие**
-- `SERVER_NAME` — домен, который проксирует gateway (по умолчанию `localhost`).
-- `JWT_SECRET`, `JWT_ALG` — общий секрет и алгоритм для Auth/Profile.
-
-**PostgreSQL**
-- `POSTGRES_USER`, `POSTGRES_PASSWORD` — учётные данные кластера.
-- `POSTGRES_DB_AUTH`, `POSTGRES_DB_ADMIN` — имена баз, создаваемые для Auth и Django.
-- `DATABASE_URL_PROFILES` — удобный DSN для профилей; сама база `profiles_db` создаётся вручную на этапе первого запуска.
-
-**Auth service**
-- `DATABASE_URL` — строка подключения SQLAlchemy (по умолчанию локальный SQLite `sqlite+aiosqlite:///./auth.db`).
-- `ACCESS_TOKEN_EXPIRES_MIN`, `REFRESH_TOKEN_EXPIRES_MIN` — TTL токенов.
-- Параметры логирования и наблюдаемости: `LOG_LEVEL`, `METRICS_ENABLED`, `TRACING_ENABLED`, `OTLP_ENDPOINT`, `SENTRY_DSN` и др.
-
-**Content API**
-- `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB` и `REDIS_PASSWORD` — доступ к Redis.
-- `ELASTIC_HOST`, `ELASTIC_PORT`, `ELASTIC_USERNAME`, `ELASTIC_PASSWORD` — доступ к Elasticsearch.
-- `DEFAULT_PAGE_SIZE`, `CACHE_NAMESPACE`, `REDIS_CACHE_TTL_SECONDS` — параметры пагинации и кэша.
-- Те же флаги наблюдаемости: `METRICS_ENABLED`, `TRACING_ENABLED`, `RATE_LIMIT_ENABLED` и т.п.
-
-**Profile service**
-- `DATABASE_URL` — DSN PostgreSQL (для локальной разработки допускается SQLite).
-- `PROFILES_CRYPTO_KEY_BASE64` — 32-байтовый base64-ключ для AES-GCM.
-- `PHONE_HASH_PEPPER` — pepper для хэширования телефонных номеров.
-- `REDIS_HOST`, `REDIS_PORT` — кэш и SlowAPI rate limiting.
-- Переключатели наблюдаемости и лимитов аналогичны другим сервисам.
-
-**UGC service**
-- Префикс окружения `UGC_`, вложенные параметры — через `__`.
-  - Например: `UGC_CLICKHOUSE__HOST`, `UGC_CLICKHOUSE__PORT`, `UGC_CLICKHOUSE__USER`.
-- `UGC_RATE_LIMIT_ENABLED`, `UGC_METRICS_ENABLED`, `UGC_TRACING_ENABLED` — функциональные флаги.
-
-**Admin panel**
-- `DJANGO_SECRET_KEY`, `DJANGO_SUPERUSER_*` — секрет Django и учётные данные суперпользователя.
-
-
-### Генерация секретов профиля
-
-
-Профильный сервис не стартует с заглушечным ключом — создайте новый:
-```bash
-python - <<'PY'
-import base64, os
-print(base64.b64encode(os.urandom(32)).decode())
-PY
-```
-Полученное значение запишите в `PROFILES_CRYPTO_KEY_BASE64`. Pepper (`PHONE_HASH_PEPPER`) должен быть уникальным для окружения.
+The service integrates with **Auth Service** via JWT, **Content API** for public aggregates, and an **Admin Panel** for secure PII access.
 
 ---
 
-## Первый запуск
+## Features
 
-1. Запустите инфраструктурные сервисы:
-   ```bash
-   docker compose up -d db redis elasticsearch clickhouse
-   ```
-2. После того как health-checkи станут зелёными, создайте отдельные базы данных (при первом запуске):
-   ```bash
-   docker compose exec db psql -U ${POSTGRES_USER:-cinema} -c "CREATE DATABASE auth_db;"
-   docker compose exec db psql -U ${POSTGRES_USER:-cinema} -c "CREATE DATABASE admin_db;"
-   docker compose exec db psql -U ${POSTGRES_USER:-cinema} -c "CREATE DATABASE profiles_db;"
-   docker compose exec db psql -U ${POSTGRES_USER:-cinema} -d admin_db -c "CREATE SCHEMA IF NOT EXISTS content AUTHORIZATION ${POSTGRES_USER:-cinema};"
-   ```
-3. Выполните миграции профилей (обязательный шаг перед запуском FastAPI-приложения):
-   ```bash
-   docker compose run --rm profile-service alembic upgrade head
-   ```
-4. (Опционально) убедитесь, что Django миграции проходят заранее:
-   ```bash
-   docker compose run --rm admin_panel python manage.py migrate
-   ```
-5. Соберите и поднимите весь стек:
-   ```bash
-   docker compose up -d --build
-   # или
-   make up
-   ```
-6. Просмотрите логи при первом старте:
-   ```bash
-   docker compose logs -f gateway
-   ```
-
-### Проверка готовности
-
-Проверьте health-checkи через gateway:
-```bash
-curl http://localhost/health
-curl http://localhost/api/auth/health
-curl http://localhost/api/content/health
-curl http://localhost/api/ugc/health
-curl http://localhost/api/profile/health
-```
-* Для UGC сервис вернёт `{"status": "DEGRADED", "backend": "memory"}`, если ClickHouse недоступен и выбран встроенный in-memory репозиторий.
-* Prometheus-метрики расположены по `/<svc>/metrics` (например, `http://localhost/api/auth/metrics`).
-
-Админ-панель доступна по `http://localhost/admin/` (логин и пароль берутся из `.env`).
+- **Profile CRUD**: one active profile per `user_id`; unique phone numbers
+- **Favorites**: idempotent add/remove; pagination & sort by creation
+- **Ratings**: idempotent upsert; `avg_rating`/`ratings_count` cached in Redis
+- **Reviews**: one review per (user, film); statuses `published|hidden|moderation`
+- **Public endpoints** for aggregates & recent reviews (no PII leakage)
+- **Admin endpoints** gated by role (e.g., `profiles.view_sensitive`)
+- **Audit logging** of PII access and profile changes
 
 ---
 
-## Локальная разработка и качество
+## Architecture
 
+Stack: **FastAPI** (HTTP), **PostgreSQL** (primary data store), **Redis** (caching), optional **Django Admin** for back-office.
 
-Установите инструменты качества:
-```bash
-make install-dev
-```
-Базовый рабочий цикл:
-```bash
-make format        # black
-make lint          # ruff
-make typecheck     # mypy
-make check         # формат + линтеры + типы
+### Component Diagram (service in context)
+
+```mermaid
+flowchart LR
+    subgraph Client
+      U[User]
+      A[Administrator]
+    end
+
+    U -->|JWT| GW[Gateway (Nginx)]
+    A -->|JWT| GW
+
+    GW --> PS[Profile Service (FastAPI)]
+    GW --> CA[Content API]
+    GW --> AS[Auth Service]
+    A --> DJ[Admin Panel (Django)]
+
+    PS -->|SQL| PG[(PostgreSQL: profiles_db)]
+    PS -->|cache| RD[(Redis)]
+    CA --> ES[(Elasticsearch)]
+    UGC[UGC Service] --> CH[(ClickHouse)]
+
+    CA <--> PS
+    DJ <--> PS
+    AS <--> PS
 ```
 
-Тесты запускаются отдельно для каждого сервиса:
-```bash
-pytest services/auth_service/tests
-pytest services/content_api/tests
-pytest services/profile_service/tests
-pytest services/ugc_service/tests
+### Class Diagram (core domain)
+
+```mermaid
+classDiagram
+  class Profile {
+    +uuid id
+    +uuid user_id
+    +string full_name
+    +string phone_e164_enc
+    +string phone_hash
+    +bool marketing_opt_in
+    +bool twofa_phone_verified
+    +datetime created_at
+    +datetime updated_at
+  }
+
+  class Favorite {
+    +uuid id
+    +uuid profile_id
+    +uuid film_id
+    +datetime created_at
+  }
+
+  class Rating {
+    +uuid id
+    +uuid profile_id
+    +uuid film_id
+    +decimal rating 1..10
+    +datetime updated_at
+  }
+
+  class Review {
+    +uuid id
+    +uuid profile_id
+    +uuid film_id
+    +string title
+    +text body
+    +decimal rating 1..10
+    +enum status [published|hidden|moderation]
+    +datetime created_at
+    +datetime updated_at
+  }
+
+  class AuditLog {
+    +uuid id
+    +uuid actor_user_id
+    +string action
+    +uuid target_profile_id
+    +json fields_masked
+    +datetime created_at
+  }
+
+  Profile "1" <-- "0..*" Favorite : has
+  Profile "1" <-- "0..*" Rating : has
+  Profile "1" <-- "0..*" Review : has
 ```
-
-### Частный запуск сервисов
-
-Каждый сервис можно стартовать вне Docker, указав нужные переменные окружения:
-```bash
-# Auth service c SQLite (по умолчанию)
-uvicorn services.auth_service.app.main:app --port 8001
-
-# Profile service с локальной SQLite
-DATABASE_URL=sqlite+aiosqlite:////tmp/profiles.db \
-PROFILES_CRYPTO_KEY_BASE64=<ключ> \
-PHONE_HASH_PEPPER=<pepper> \
-uvicorn services.profile_service.app.main:app --port 8000
-
-# Content API
-ELASTIC_HOST=localhost REDIS_HOST=localhost \
-uvicorn services.content_api.src.main:app --port 8002
-
-```
-`prometheus_fastapi_instrumentator.py` в корне обеспечивает доступность `/metrics`, даже если пакет отсутствует в окружении.
-
-Тесты запускаются отдельно для каждого сервиса:
-```bash
-pytest services/auth_service/tests
-pytest services/content_api/tests
-pytest services/profile_service/tests
-pytest services/ugc_service/tests
-```
-
-### Частный запуск сервисов
-
-Каждый сервис можно стартовать вне Docker, указав нужные переменные окружения:
-```bash
-# Auth service c SQLite (по умолчанию)
-uvicorn services.auth_service.app.main:app --port 8001
-
-# Profile service с локальной SQLite
-DATABASE_URL=sqlite+aiosqlite:////tmp/profiles.db \
-PROFILES_CRYPTO_KEY_BASE64=<ключ> \
-PHONE_HASH_PEPPER=<pepper> \
-uvicorn services.profile_service.app.main:app --port 8000
-
-# Content API
-ELASTIC_HOST=localhost REDIS_HOST=localhost \
-uvicorn services.content_api.src.main:app --port 8002
-```
-`prometheus_fastapi_instrumentator.py` в корне обеспечивает доступность `/metrics`, даже если пакет отсутствует в окружении.
 
 ---
 
-## Наблюдаемость и эксплуатация
+## API (Draft)
 
+**Auth**: Use Bearer JWT for all private endpoints.
 
-Все FastAPI-сервисы подключают общий middleware-пакет `services.common`:
+### Profile
+- `GET /api/profile/me` → `200 {profile}`
+- `POST /api/profile` `{full_name, phone}` → `201 {profile}`
+- `PUT /api/profile` `{full_name?, phone?, marketing_opt_in?}` → `200 {profile}`
+- `DELETE /api/profile` → `204`
 
-- **Структурированные JSON-логи** c `request_id`, таймингами и заголовками (`REQUEST_LOG_HEADERS`).
-- **Health-check** (`/health`) и **метрики Prometheus** (`/metrics`). Настраиваются через `*_METRICS_ENABLED`, `*_METRICS_ENDPOINT`.
-- **OpenTelemetry**: включается переменными `*_TRACING_ENABLED`, `*_OTLP_ENDPOINT`, `*_TRACES_SAMPLE_RATIO`.
-- **Sentry**: задайте `*_SENTRY_DSN`, `*_SENTRY_ENVIRONMENT`, `*_SENTRY_TRACES_SAMPLE_RATE`.
-- **CORS и TrustedHost** управляются `*_CORS_*` и `*_ALLOWED_HOSTS`.
-- **Rate limiting**: легковесный слайдинг-по-окну (`*_RATE_LIMIT_ENABLED`, `*_RATE_LIMIT_REQUESTS`, `*_RATE_LIMIT_WINDOW_SECONDS`). Профильный сервис дополнительно использует SlowAPI с Redis-хранилищем.
+### Favorites
+- `GET /api/profile/me/favorites?limit&offset` → `200 {items:[{film_id,added_at}], total}`
+- `POST /api/profile/me/favorites` `{film_id}` → `200/201`
+- `DELETE /api/profile/me/favorites/{film_id}` → `204`
 
-Gateway можно настроить на уровне Nginx (gzip, `proxy_next_upstream`, лимиты тела запроса) — смотрите `gateway/nginx.conf`.
+### Ratings
+- `GET /api/profile/me/ratings?film_id?` → `200`
+- `PUT /api/profile/me/ratings` `{film_id, rating}` → `200 {rating}`
+- `GET /api/profile/public/films/{film_id}/rating-agg` → `200 {avg_rating, ratings_count}`
 
+### Reviews
+- `GET /api/profile/public/films/{film_id}/reviews?limit&offset&sort=recent|top` → `200`
+- `POST /api/profile/me/reviews` `{film_id, title?, body, rating?}` → `201`
+- `PUT /api/profile/me/reviews/{film_id}` → `200`
+- `DELETE /api/profile/me/reviews/{film_id}` → `204`
+- **Admin:** `PUT /api/profile/admin/reviews/{id}/status` `{status}`
 
-Gateway можно настроить на уровне Nginx (gzip, `proxy_next_upstream`, лимиты тела запроса) — смотрите `gateway/nginx.conf`.
+### Admin (PII)
+- `GET /api/profile/admin/search?phone=...` — search by `phone_hash`
+- `GET /api/profile/admin/{user_id}` — full profile view (sensitive; role-restricted)
 
-## API и документация
+### Sequence (rating upsert)
+```mermaid
+sequenceDiagram
+  participant User
+  participant Gateway as Nginx
+  participant ProfileAPI as Profile Service
+  participant Redis
+  participant Postgres as Postgres (profiles_db)
+  participant Auth as Auth Service
 
+  User->>Gateway: PUT /api/profile/me/ratings {film_id, rating} (Bearer JWT)
+  Gateway->>Auth: /api/auth/me (validate JWT)
+  Auth-->>Gateway: 200 {user_id}
+  Gateway->>ProfileAPI: PUT /ratings (user_id, film_id, rating)
 
-Swagger/OpenAPI доступен для каждого сервиса:
-- Auth: `http://localhost/api/auth/openapi`
-- Content: `http://localhost/api/content/openapi`
-- Profile: `http://localhost/api/profile/openapi`
-- UGC: `http://localhost/api/ugc/openapi`
-
-
-Ключевые маршруты:
-
-=======
-
-**Auth**
-- `POST /api/auth/register` — регистрация пользователя.
-- `POST /api/auth/login` — выдача access/refresh токенов.
-- `GET /api/auth/me` — данные текущего пользователя (Bearer JWT).
-
-
-**Content**
-- `GET /api/content/films` — список фильмов с пагинацией.
-- `GET /api/content/films/{uuid}` — карточка фильма.
-- Аналогичные маршруты для жанров и персон.
-
-
-**Profile**
-- `GET/POST/PUT/DELETE /api/profile` — CRUD профиля текущего пользователя.
-- `GET/PUT /api/profile/me/ratings` — работа с персональными оценками.
-- `GET /api/profile/public/films/{film_id}/rating-agg` — агрегированная оценка.
-- `POST/DELETE/GET /api/profile/me/favorites` — избранное.
-
-**UGC**
-- `POST /api/ugc/event` — запись пользовательского события.
-- `GET /api/ugc/events?limit=10` — чтение последних событий.
-
-**Admin panel**
-- Django admin с моделями фильмов/жанров/персон (схема `content`).
-
----
-
-## Миграции и данные
-
-- **Auth service** — при старте вызывает `Base.metadata.create_all`, поэтому схема создаётся автоматически; Alembic не используется.
-- **Profile service** — миграции управляются Alembic (`services/profile_service/alembic.ini`). Создавайте новые файлы через `alembic revision --autogenerate -m "..."` и применяйте `alembic upgrade head`.
-- **Admin panel** — миграции Django выполняются в `entrypoint.sh`, суперпользователь создаётся автоматически при наличии переменных окружения.
-- **UGC** — при подключении к ClickHouse автоматически создаёт таблицу `events`. В деградированном режиме использует in-memory-хранилище.
-
+  ProfileAPI->>Postgres: UPSERT Rating(profile_id, film_id, rating)
+  Postgres-->>ProfileAPI: OK
+  ProfileAPI->>Postgres: SELECT AVG, COUNT FROM ratings WHERE film_id=...
+  Postgres-->>ProfileAPI: {avg, count}
+  ProfileAPI->>Redis: SET film:{id}:rating_agg {avg,count} TTL=300
+  ProfileAPI-->>Gateway: 200 {rating, agg:{avg,count}}
+  Gateway-->>User: 200 OK
+```
 
 ---
 
-## Типичные проблемы
+## Data Model (Sketch)
 
-| Симптом | Решение |
-| ------- | ------- |
-| Через gateway все API возвращают 404 | Убедитесь, что в `gateway/nginx.conf` у `proxy_pass` нет завершающего `/` — иначе Nginx удаляет префикс. Перезапустите gateway после правки. |
-| Auth/Profile не стартуют из-за секретов | Проверьте `JWT_SECRET`, `PROFILES_CRYPTO_KEY_BASE64`, `PHONE_HASH_PEPPER`. Ключ профиля должен быть 32 байта (base64). |
-| UGC возвращает `DEGRADED` | ClickHouse недоступен. Проверьте контейнер, логины, сеть. При восстановлении перезапустите UGC, чтобы вернуться к основному backend. |
-| Elasticsearch/ClickHouse долго запускаются | Увеличьте лимит памяти Docker или дождитесь завершения health-checkов (30–90 секунд). |
-| Порты 80/5432/6379/9200/8123 заняты | Освободите их или измените порт-маппинг в `docker-compose.yml`. |
+```sql
+create table profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique,
+  full_name text not null,
+  phone_e164_enc bytea not null,        -- ciphertext (AES-256-GCM / pgcrypto AES)
+  phone_hash bytea not null unique,     -- sha256(pepper + e164)
+  marketing_opt_in boolean default false,
+  twofa_phone_verified boolean default false,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table favorites (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  film_id uuid not null,
+  created_at timestamptz default now(),
+  unique(profile_id, film_id)
+);
+
+create table ratings (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  film_id uuid not null,
+  rating numeric(3,1) not null check (rating >= 1 and rating <= 10 and rating*2 = floor(rating*2)),
+  updated_at timestamptz default now(),
+  unique(profile_id, film_id)
+);
+
+create table reviews (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  film_id uuid not null,
+  title text,
+  body text not null,
+  rating numeric(3,1),
+  status text not null default 'published' check (status in ('published','hidden','moderation')),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(profile_id, film_id)
+);
+
+create table audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid not null,
+  action text not null,
+  target_profile_id uuid not null,
+  fields_masked jsonb not null,
+  created_at timestamptz default now()
+);
+```
 
 ---
 
-## Дополнительные материалы
+## Security & Compliance
 
-- [Спецификация профильного сервиса](PROFILE_SERVICE_SPEC.md)
-- [Изменения по профилям](CHANGELOG.md)
+- **PII Protection**
+  - `phone_e164_enc` encrypted at application layer (AES‑256‑GCM) or via `pgcrypto` in Postgres.
+  - `phone_hash` (SHA‑256 + pepper) stored & indexed; unique constraint enforces uniqueness.
+- **AuthN/Z**: JWT for all private endpoints; RBAC with least privilege.
+- **Rate limiting**: baseline 60 rps / user, 10 rps / IP for public endpoints.
+- **Audit logging** for any access to PII; PII is masked in logs.
+- **Backups**: daily; retention ≥ 30 days; encrypted at rest.
+- **Data subject rights**: export & deletion (soft delete + hard delete on request).
+- **Secrets**: keys in a Secret Manager or environment variables (never in git).
 
+---
+
+## Performance & Reliability
+
+- **Availability (prod)**: 99.9%
+- **Latency targets**: p95 < 100–150 ms for CRUD; aggregates < 200 ms (cache hit < 50 ms)
+- **Horizontal scaling**: stateless HTTP; no sticky sessions
+- **Idempotency**: for favorites add and rating upsert
+- **Caching**: film rating aggregates in Redis (TTL ≈ 5 min)
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Python **3.11+**
+- PostgreSQL **14+**
+- Redis **7+**
+- (Optional) Poetry or uv/pip-tools
+- OpenSSL (for generating encryption keys)
+
+### Configuration
+
+Create a `.env` (or export as env vars):
+
+```bash
+# Database
+PROFILE_DB_DSN=postgresql+psycopg2://user:pass@localhost:5432/profiles_db
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# Auth
+JWT_PUBLIC_KEY_PATH=./secrets/jwt_pub.pem
+
+# PII encryption (32-byte key for AES-256-GCM; base64-encoded)
+PII_ENC_KEY_B64=YOUR_BASE64_KEY_HERE
+
+# Rate limits (sane defaults)
+RATE_LIMIT_PER_USER=60
+RATE_LIMIT_PER_IP_PUBLIC=10
+```
+
+> **Note:** do not commit real secrets. Use a secrets manager in production.
+
+### Run Locally
+
+```bash
+# 1) Create a virtual environment & install deps
+python -m venv .venv && source .venv/bin/activate
+pip install -U pip wheel
+# If using Poetry:
+#   pip install poetry && poetry install
+
+# 2) Migrations (Alembic)
+# alembic upgrade head
+
+# 3) Start the service
+uvicorn app.main:app --reload --port 8080
+
+# 4) OpenAPI (Swagger UI)
+# http://localhost:8080/docs
+```
+
+### Example with Docker Compose
+
+> Minimal example — adapt image/build context and secrets to your repository layout.
+
+```yaml
+version: "3.9"
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: profiles_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  profile-service:
+    build: .
+    depends_on: [postgres, redis]
+    environment:
+      PROFILE_DB_DSN: postgresql+psycopg2://app:app@postgres:5432/profiles_db
+      REDIS_URL: redis://redis:6379/0
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_pub
+      PII_ENC_KEY_B64: ${PII_ENC_KEY_B64:?set_me}
+    ports: ["8080:8080"]
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8080"
+    secrets:
+      - jwt_pub
+
+secrets:
+  jwt_pub:
+    file: ./secrets/jwt_pub.pem
+
+volumes:
+  pgdata: {}
+```
+
+---
+
+## Observability
+
+- **Metrics**: Prometheus endpoints; RED/Golden signals for HTTP
+- **Tracing**: OpenTelemetry integration (propagation from Gateway)
+- **Structured logs**: JSON format with request IDs and masked PII
+
+---
+
+## Admin Access
+
+A Django-based Admin Panel (or admin APIs) provides controlled access to PII for users with dedicated roles (e.g., `profiles.view_sensitive`). Admin endpoints and queries operate on a read-only basis unless explicitly permitted.
+
+---
+
+## Roadmap
+
+- Postman collection & OpenAPI examples
+- Bulk export & deletion flows
+- Review moderation UI
+- Async eventing for recommendations
+- ES/analytics replication of aggregates
+
+---
+
+## Contributing
+
+- Style: `black`, `ruff`
+- Tests: unit + integration (DB/Redis); run in CI
+- Commits: Conventional Commits recommended
+- PRs: include test coverage and update docs where relevant
+
+---
+
+## License
+
+**TBD** — choose a license that matches your distribution model (e.g., MIT/Apache-2.0 for open-source, or a private license for internal use).
+
+---
+
+## Acknowledgements
+
+- Built with **FastAPI**, **SQLAlchemy**, **Alembic**, **PostgreSQL**, **Redis**
+- Thanks to contributors and reviewers of the Online Cinema monorepo
+
+---
+
+> **See also:** the detailed service specification in `PROFILE_SERVICE_SPEC.md`.
